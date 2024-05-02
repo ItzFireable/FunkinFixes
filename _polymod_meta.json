@@ -3,6 +3,6 @@
 	"description": "Various miscellaneous fixes & additions to base game, based on prototype v0.3.0",
 	"author": "Fireable, GDD, Furo",
 	"api_version": "0.1.0",
-	"mod_version": "0.1.0",
+	"mod_version": "0.1.1",
 	"license": "GPLv3"
 }
