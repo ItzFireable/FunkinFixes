@@ -33,9 +33,13 @@ import funkin.play.notes.Strumline;
 import funkin.ui.options.OptionsMenu;
 import flixel.text.FlxTextBorderStyle;
 import funkin.ui.options.OptionsState;
+import funkin.ui.story.StoryMenuState;
+import funkin.ui.mainmenu.MainMenuState;
+import funkin.ui.freeplay.FreeplayState;
 import funkin.ui.options.PreferencesMenu;
 import funkin.play.components.TallyCounter;
 import funkin.audio.visualize.SpectogramSprite;
+import funkin.modding.base.ScriptedMusicBeatState;
 
 import StringTools;
 
@@ -74,7 +78,8 @@ class FunkinFixes extends Module {
 		showOpponentMiddlescroll: false,
 		newScoreText: true,
 		laneUnderlay: false,
-		ghostTapping: true
+		ghostTapping: true,
+		customFreeplay: false
 	};
 
 	var settingsNames = {
@@ -85,9 +90,22 @@ class FunkinFixes extends Module {
 		showOpponentMiddlescroll: "See Enemy (Centered)",
 		newScoreText: "New Score Text",
 		laneUnderlay: "Lane Underlay",
-		ghostTapping: "Ghost Tapping"
+		ghostTapping: "Ghost Tapping",
+		customFreeplay: "Temp Freeplay"
 	}
 
+	var settingsDescriptions = {
+		judgementCounter: "Shows judgements on left side",
+		healthbarColors: "Color healthbar automatically",
+		spectogramVisuals: "Show spectrograms for vocals",
+		middlescroll: "Center strumlines",
+		showOpponentMiddlescroll: "Show enemy strums on centered strumlines",
+		newScoreText: "Use the new score text format",
+		laneUnderlay: "Show underlay for strums",
+		ghostTapping: "Allow ghost tapping",
+		customFreeplay: "Use temporary freeplay state (AMD fix)"
+	}
+	
 	function getDominantIconColour(char:String)
 	{
 		var iconBitmapData:BitmapData = BitmapData.fromFile('assets/images/icons/icon-' + char + '.png');
@@ -452,12 +470,40 @@ class FunkinFixes extends Module {
 
 			for (key in Reflect.fields(settingsData)) {
 				var name = Reflect.field(settingsNames, key);
+				var desc = Reflect.field(settingsDescriptions, key);
 
-				prefs.createPrefItemCheckbox(name, "",function(value) {
+				prefs.createPrefItemCheckbox(name, desc ,function(value) {
 					Reflect.setField(save.data, key, value);
 					Reflect.setField(settingsData, key, value);
 				}, Reflect.field(save.data, key));
 			} 
+        } else if (settingsData.customFreeplay == true && Std.isOfType(event.targetState, MainMenuState)) {
+            for (obj in event.targetState.menuItems.members) {
+                if (obj.ID == 1) {
+                    obj.setData("freeplay", function() {
+                        var currentState = FlxG.state;
+                        var targetState = ScriptedMusicBeatState.init('TempFreeplayState');
+                        currentState.startExitState(targetState);
+                    });
+
+                    obj.changeAnim("idle");
+                }
+            }
+		} else if (Std.isOfType(event.targetState, StoryMenuState)) {
+            if (event.targetState.modeText != null) { 
+				event.targetState.modeText.visible = true;
+			}
+        }
+    }
+
+	override function onSubStateOpenBegin(event) {
+        super.onSubStateOpenBegin(event);
+
+        if (settingsData.customFreeplay == true && Std.isOfType(event.targetState, FreeplayState)) {
+			// TODO: Make this redirect to our custom state.
+            /*var currentState = event.targetState;
+            var targetState = ScriptedMusicBeatState.init('TempFreeplayState');
+            currentState.startExitState(targetState);*/
         }
     }
 	
