@@ -1,0 +1,536 @@
+/*
+ * The Funkin’ Fixes
+ *
+ * @author Fireable
+ * @author GodsDrunkestDriver
+ * @author Furo
+ *
+ * @version 1.0.0
+ *
+ */
+
+import funkin.modding.module.Module;
+
+import Main;
+import Reflect;
+
+import flixel.FlxG;
+import funkin.Paths;
+import flixel.FlxSprite;
+import funkin.Highscore;
+import openfl.display.FPS;
+import flixel.util.FlxSave;
+import flixel.text.FlxText;
+import funkin.play.PlayState;
+import funkin.util.Constants;
+import openfl.text.TextFormat;
+import flixel.tweens.FlxTween;
+import funkin.ui.options.Page;
+import funkin.audio.VoicesGroup;
+import openfl.display.BitmapData;
+import funkin.ui.options.PageName;
+import funkin.play.notes.Strumline;
+import funkin.ui.options.OptionsMenu;
+import flixel.text.FlxTextBorderStyle;
+import funkin.ui.options.OptionsState;
+import funkin.ui.options.PreferencesMenu;
+import funkin.play.components.TallyCounter;
+import funkin.audio.visualize.SpectogramSprite;
+
+import StringTools;
+
+class FunkinFixes extends Module {
+	var save:FlxSave;
+	var scoreText:FlxText;
+	var judgementCounter:FlxText;
+	var laneBackground:FlxSprite;
+
+	var specL:SpectogramSprite;
+	var specR:SpectogramSprite;
+
+	var ratingStatus = "PFC";
+
+	var totalNotes:Float = 0;
+	var totalHitNotes:Float = 0;
+
+	var counters = [];
+	var counterNames = ["sickCounter","goodCounter","badCounter","shitCounter","missCounter"];
+	var counterTargets = ["sick","good","bad","shit","missed"];
+	var counterOffsets = [-45,-22,1,24,48];
+
+	// This one is just because I felt like it.
+	static var FONT_NAME = "fnf-bold";
+	static var FONT_SIZE = 22;
+
+	// No number values in settings yet LOL
+	static var LANE_TRANSPARENCY = 0.5;
+	static var FORCED_SCROLLSPEED = 3;
+
+	var settingsData = {
+		judgementCounter: true,
+		healthbarColors: true,
+		spectogramVisuals: false,
+		middlescroll: false,
+		showOpponentMiddlescroll: false,
+		newScoreText: true,
+		laneUnderlay: false,
+		ghostTapping: true
+	};
+
+	var settingsNames = {
+		judgementCounter: "Judgement Counter",
+		healthbarColors: "Healthbar Colors",
+		spectogramVisuals: "Vocal Spectrograms",
+		middlescroll: "Centered Strums",
+		showOpponentMiddlescroll: "See Enemy (Centered)",
+		newScoreText: "New Score Text",
+		laneUnderlay: "Lane Underlay",
+		ghostTapping: "Ghost Tapping"
+	}
+
+	function getDominantIconColour(char:String)
+	{
+		var iconBitmapData:BitmapData = BitmapData.fromFile('assets/images/icons/icon-' + char + '.png');
+		var colourDict = {};
+
+		if (iconBitmapData == null) {
+			return 0;
+		}
+
+		for (x in 0...iconBitmapData.width)
+		{
+			for (y in 0...iconBitmapData.height)
+			{
+				var pixelColour:Int = iconBitmapData.getPixel32(x, y);
+				if (pixelColour != 0 && pixelColour != 0xFF000000)
+				{
+					if (Reflect.hasField(colourDict, pixelColour))
+					{
+						Reflect.setField(colourDict, pixelColour, Reflect.field(colourDict, pixelColour) + 1);
+					}
+					else
+					{
+						Reflect.setField(colourDict, pixelColour, 1);
+					}
+				}
+			}
+		}
+
+		var mostFrequentColour:Int = 0;
+		var mostFrequentColourFrequency:Int = 0;
+
+		for (colour in Reflect.fields(colourDict))
+		{
+			if (Reflect.field(colourDict, colour) > mostFrequentColourFrequency)
+			{
+				mostFrequentColour = colour;
+				mostFrequentColourFrequency = Reflect.field(colourDict, colour) ;
+			}
+		}
+
+		return mostFrequentColour;
+	}
+
+	function truncateFloat(number:Float, precision:Int):Float
+	{
+		var num = number;
+		num = num * Math.pow(10, precision);
+		num = Math.round(num) / Math.pow(10, precision);
+		return num;
+	}
+
+    function new() {
+		super("Funkin Fixes", 500);
+
+		// Make FPS counter better slightly LOL
+        Main.fpsCounter.set_defaultTextFormat(new TextFormat("VCR OSD Mono", 14, 16777215));
+		Main.memoryCounter.set_defaultTextFormat(new TextFormat("VCR OSD Mono", 14, 16777215));
+
+		save = new FlxSave();
+        save.bind("FunkinFixes", "Fireable");
+
+		for (key in Reflect.fields(settingsData)) {
+			var value = Reflect.field(settingsData, key);
+
+			if (Reflect.field(save.data, key) == null)
+				Reflect.setField(save.data, key, value);
+			else
+				Reflect.setField(settingsData, key, Reflect.field(save.data, key));
+		} 
+
+		save.flush();
+    }
+
+	override function onNoteIncoming(event) {
+		super.onNoteIncoming(event);
+
+		var note = event.note;
+		if (!event.note.noteData.getMustHitNote() && settingsData.middlescroll == true) {
+			if (settingsData.showOpponentMiddlescroll == true) {
+				var index = (note.direction)+1;
+				var middlePoint = Strumline.KEY_COUNT / 2; // hardcoded bc lazy rn LOL  
+
+				note.alpha = 0.5;
+				if (index <= middlePoint) {
+					note.x -= 1280/4;
+				} else {
+					note.x += 1280/4;
+				}
+
+				if (note.holdNoteSprite != null) {
+					note.holdNoteSprite.alpha = 0.5;
+					if (index <= middlePoint) {
+						note.holdNoteSprite.x -= 1280/4;
+					} else {
+						note.holdNoteSprite.x += 1280/4;
+					}
+				}
+			}
+		}
+	}
+
+	function onCountdownStart() {
+		var state = PlayState.instance;
+        if(state == null) return;
+        if(state.initialized) return;
+
+		// Fix base game issues
+		state.playerStrumline.x += 53;
+		state.opponentStrumline.x += 53;
+
+		state.playerStrumline.screenCenter(1);
+		state.opponentStrumline.screenCenter(1);
+
+		if (settingsData.middlescroll == false) {
+			state.playerStrumline.x += 1280/4;
+			state.opponentStrumline.x -= 1280/4;
+		} else {
+			if (settingsData.showOpponentMiddlescroll == true) {
+				var index = 1;
+				var middlePoint = Strumline.KEY_COUNT / 2; 
+
+				state.opponentStrumline.notes.alpha = 0.5;
+				state.opponentStrumline.holdNotes.alpha = 0.5;
+				state.opponentStrumline.strumlineNotes.alpha = 0.5;
+
+				var delay = (0.5 + 0.2 * Strumline.KEY_COUNT) + 0.1;
+				for (note in state.opponentStrumline.strumlineNotes) {
+					if (index <= middlePoint) {
+						note.x -= 1280/4;
+					} else {
+						note.x += 1280/4;
+					}
+
+					FlxTween.tween(note, {
+						alpha: 0.5
+					}, 1, {
+						startDelay: delay
+					});
+					index += 1;
+				}
+
+				// state.opponentStrumline.noteStyle._data.assets.holdNoteCover.data.enabled = false;
+			} else {
+				state.opponentStrumline.x += 1280*2;
+			}
+		}
+
+		if (settingsData.healthbarColors == true) {
+			state.healthBar.createFilledBar(getDominantIconColour(state.iconP2.characterId), getDominantIconColour(state.iconP1.characterId));
+		}
+
+		// Add judgement counter
+		if (settingsData.judgementCounter == true) {
+			judgementCounter = new FlxText(4, 0, 0, "Sick:\nGood:\nBad:\nShit:\nMiss:", FONT_SIZE + 7);
+			judgementCounter.cameras = [state.camHUD];
+
+			judgementCounter.setFormat(Paths.font(FONT_NAME + ".ttf"), FONT_SIZE + 7, 16777215, "left", FlxTextBorderStyle.OUTLINE, -16777215);
+			judgementCounter.screenCenter(16);
+
+			state.add(judgementCounter);
+
+			var index = 0;
+			for (i in counterNames) {
+				var counter = new TallyCounter(85, 0, 0);
+				counter.scale.set(0.475,0.55);
+				counter.screenCenter(16);
+
+				counter.y += counterOffsets[index];
+				counter.cameras = [state.camHUD];
+
+				counters.push(counter);
+				state.add(counter);
+				index++;
+			}
+		}
+
+		// Create custom score text
+		if (settingsData.newScoreText == true) {
+			state.scoreText.visible = false;
+
+			scoreText = new FlxText(4, 0, 0, "hi", FONT_SIZE);
+			scoreText.cameras = [state.camHUD];
+
+			scoreText.setFormat(Paths.font(FONT_NAME + ".ttf"), FONT_SIZE, 16777215, "center", FlxTextBorderStyle.OUTLINE, -16777215);
+			scoreText.screenCenter(1);
+
+			scoreText.y = state.scoreText.y;
+			scoreText.zIndex = 852;
+
+			// Add custom objects and update them
+			state.add(scoreText);
+		}
+
+		updateScoreText();
+
+		if (settingsData.laneUnderlay == true) {
+			laneBackground = new FlxSprite(0, 0).makeGraphic(1,1);
+			laneBackground.scrollFactor.set();
+
+			laneBackground.alpha = LANE_TRANSPARENCY;
+            laneBackground.color = 0x000000;
+
+			var scale = 0;
+			for (strum in state.playerStrumline.strumlineNotes) {
+				scale += 113; // Hardcoded, because neither width or frameWidth works, and using Strumline.STRUMLINE_SIZE doesn't scale right either.
+			}
+
+			laneBackground.scale.set(scale, 720 * 2);
+			laneBackground.screenCenter(17);
+			laneBackground.x -= 6; // Why????
+
+			laneBackground.cameras = [state.camHUD];
+			state.add(laneBackground);
+		}
+
+		if (state.vocals != null && settingsData.spectogramVisuals == true) {
+			if (state.vocals.getOpponentVoice() != null) {
+				specL = new SpectogramSprite(state.vocals.getOpponentVoice(),null,null,750);
+				specL.cameras = [state.camHUD];
+
+				specL.x -= 50;
+				state.add(specL);
+			}
+
+			if (state.vocals.getPlayerVoice() != null) {
+				specR = new SpectogramSprite(state.vocals.getPlayerVoice(),null,null,750);
+				specR.cameras = [state.camHUD];
+
+				specR.x = FlxG.width - 150;
+				state.add(specR);
+			}
+		}
+
+		if (FORCED_SCROLLSPEED != 0) {
+			state.get_currentChart().scrollSpeed = FORCED_SCROLLSPEED;
+			trace(state.get_currentChart().scrollSpeed);
+		}
+
+		Constants.GHOST_TAPPING = settingsData.ghostTapping;
+	}
+
+	function updateRatingStatus() {
+		var data = Highscore.tallies;
+		if (data == null) {
+			trace("Invalid tallies!");
+			return;
+		}
+
+		if (data.good == 0 && data.bad == 0 && data.shit == 0 && data.missed == 0) {
+			ratingStatus = "SFC";
+		} else if (data.good < 10 && data.bad == 0 && data.shit == 0 && data.missed == 0) {
+			ratingStatus = "SDG";
+		} else if (data.bad == 0 && data.shit == 0 && data.missed == 0) {
+			ratingStatus = "GFC";
+		} else if ((data.bad + data.shit + data.missed) < 10) {
+			ratingStatus = "SDCB";
+		} else {
+			ratingStatus = "CLEAR";
+		}
+	}
+
+	function updateScoreText() {
+		var data = Highscore.tallies;
+		if (data == null) {
+			trace("Invalid tallies!");
+			return;
+		}
+
+		if (scoreText != null && settingsData.newScoreText == true)
+		{
+			var accuracy:Float = truncateFloat((totalHitNotes / totalNotes) * 100, 2);
+
+			if (totalHitNotes == 0 && totalNotes == 0) {
+				accuracy = 100; 
+			} else if (accuracy < 0) { 
+				accuracy = 0; 
+			}
+
+			scoreText.text = 'Score: ' + PlayState.instance.songScore 
+				+ " / Combo Breaks: " + (data.bad + data.shit + data.missed)
+				+ " / Accuracy: " + accuracy + "% [" + ratingStatus + "]";
+
+			scoreText.screenCenter(1);
+		}
+
+		if (judgementCounter != null && settingsData.judgementCounter == true)
+		{
+			judgementCounter.text = "Sick:\nGood:\nBad:\nShit:\nMiss:";
+
+			var index = 0;
+			for (i in counterNames) {
+				var name = counterTargets[index];
+				var counter = counters[index];
+
+				if (counter == null) {
+					continue;
+				}
+
+				counter.curNumber = Reflect.field(data,name);
+				counter.drawNumbers();
+				index++;
+			}
+		}
+	}
+
+	override function onUpdate(elapsed) {
+		super.onUpdate(elapsed);
+
+		if (settingsData.spectogramVisuals == true) {
+			if (specL != null) {
+				for (i in specL.group.members) {
+					i.setGraphicSize(specL.scale.x * 3,3);
+				}
+			}
+			if (specR != null) {
+				for (i in specR.group.members) {
+					i.setGraphicSize(specR.scale.x * 3,3);
+				}
+			}
+		}
+	}
+
+	override function onNoteHit(event) {
+		if (event.note.noteData.getMustHitNote()) {
+			totalNotes += 1;
+			switch (event.judgement) {
+				case "sick":
+					totalHitNotes += 1;
+				case "perfect":
+					totalHitNotes += 1;
+				case "killer":
+					totalHitNotes += 1;
+				case "good":
+					totalHitNotes += 0.8;
+				case "bad":
+					totalHitNotes += 0.45;
+				case "shit":
+					totalHitNotes += 0.1;
+				default:
+					trace("what is " + event.judgement);
+			}
+		}
+
+		updateRatingStatus();
+		updateScoreText();
+		
+		super.onNoteHit(event);
+	}
+
+	var fixesMenu;
+
+	override function onStateChangeEnd(event){
+        super.onStateChangeEnd(event);
+        inOptions = false;
+
+        if (Std.isOfType(event.targetState, OptionsState)) {
+			var prefs = event.targetState.pages.get(PageName.Preferences);
+
+            prefs.items.createItem(120, 120 * prefs.items.length + 30, "Funkin Fixes","bold", function(){
+                trace("hi neb thanks for this");
+            }).fireInstantly = true;
+
+			for (key in Reflect.fields(settingsData)) {
+				var name = Reflect.field(settingsNames, key);
+
+				prefs.createPrefItemCheckbox(name, "",function(value) {
+					Reflect.setField(save.data, key, value);
+					Reflect.setField(settingsData, key, value);
+				}, Reflect.field(save.data, key));
+			} 
+        }
+    }
+	
+	override function onNoteMiss(event) {
+		totalNotes += 1;
+
+		updateRatingStatus();
+		updateScoreText();
+		
+		super.onNoteMiss(event);
+	}
+
+	function cleanUp() 
+	{
+		if (scoreText != null) {
+			scoreText.destroy();
+			scoreText = null;
+		}
+
+		if (judgementCounter != null) {
+			judgementCounter.destroy();
+			judgementCounter = null;
+		}
+
+		if (specL != null) {
+			specL.destroy();
+			specL = null;
+		}
+
+		if (specR != null) {
+			specR.destroy();
+			specR = null;
+		}
+
+		if (laneBackground != null) {
+			laneBackground.destroy();
+			laneBackground = null;
+		}
+
+		var index = 0;
+		for (i in counterNames) {
+			var name = counterTargets[index];
+			var counter = counters[index];
+
+			if (counter != null) {
+				counter.destroy();
+				counter = null;
+			}
+
+			index++;
+		}
+
+		counters = [];
+
+		totalNotes = 0;
+		totalHitNotes = 0;
+
+		ratingStatus = "PFC";
+		updateScoreText();
+	}
+
+	override function onSongRetry(event) {
+		super.onSongRetry(event);
+
+		totalNotes = 0;
+		totalHitNotes = 0;
+
+		ratingStatus = "PFC";
+		updateScoreText();
+	}
+
+	override function onDestroy(event){
+        cleanUp();
+        super.onDestroy(event);
+    }
+}

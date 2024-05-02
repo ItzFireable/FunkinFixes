@@ -1,0 +1,57 @@
+/*
+ * Menu Fixes
+ *
+ * @author Fireable
+ *
+ * @version 1.0.0
+ *
+ */
+
+import Std;
+import flixel.FlxG;
+import funkin.modding.module.Module;
+import funkin.ui.story.StoryMenuState;
+import funkin.ui.mainmenu.MainMenuState;
+import funkin.ui.freeplay.FreeplayState;
+import funkin.modding.base.ScriptedMusicBeatState;
+
+class StoryMenuFix extends Module {
+	function new() {
+        super("Menu Fixes", 200);
+    }
+
+    function onCreate(event){
+        super.onCreate(event);
+    }
+
+    override function onStateChangeEnd(event) {
+        super.onStateChangeEnd(event);
+
+        if (Std.isOfType(event.targetState, StoryMenuState)) {
+            // Allows mod loading on story menu!
+            event.targetState.modeText.visible = true;
+        } else if (Std.isOfType(event.targetState, MainMenuState)) {
+            for (obj in event.targetState.menuItems.members) {
+                if (obj.ID == 1) {
+                    obj.setData("freeplay", function() {
+                        var currentState = FlxG.state;
+                        var targetState = ScriptedMusicBeatState.init('TempFreeplayState');
+                        currentState.startExitState(targetState);
+                    });
+
+                    obj.changeAnim("idle");
+                }
+            }
+        }
+    }
+    
+    override function onSubStateOpenBegin(event) {
+        super.onSubStateOpenBegin(event);
+
+        if (Std.isOfType(event.targetState, FreeplayState)) {
+            var currentState = event.targetState;
+            var targetState = ScriptedMusicBeatState.init('TempFreeplayState');
+            currentState.startExitState(targetState);
+        }
+    }
+}

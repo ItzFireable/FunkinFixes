@@ -1,0 +1,209 @@
+import flixel.addons.display.FlxRuntimeShader;
+import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.sound.FlxSound;
+import funkin.graphics.FunkinSprite;
+import flixel.tweens.FlxTween;
+import funkin.Conductor;
+import funkin.ui.mainmenu.MainMenuState;
+import funkin.modding.base.ScriptedFlxRuntimeShader;
+import funkin.ui.MusicBeatState;
+import funkin.Paths;
+import funkin.data.story.level.LevelRegistry;
+import funkin.data.song.SongRegistry;
+import funkin.audio.FunkinSound;
+import funkin.util.Constants;
+import funkin.ui.freeplay.FreeplaySongData;
+import funkin.util.tools.ArrayTools;
+import flixel.group.FlxTypedGroup;
+import flixel.text.FlxText;
+import flixel.text.FlxTextBorderStyle;
+import funkin.PlayerSettings;
+import funkin.ui.transition.LoadingState;
+
+class TempFreeplayState extends MusicBeatState
+{
+	public function new()
+	{
+		super();
+	}
+
+	var background:FunkinSprite;
+	var songs = [];
+	var diffIdsTotal = [];
+	var displayedVariations = [];
+	var currentCharacter = "bf";
+	var diffIdsCurrent = [];
+	var levelIds = [];
+
+	var grpSongs;
+	var diffText;
+	var curSelected = 0;
+	var currentLevelId = 0;
+	var currentDifficulty;
+
+	override function create() {
+		super.create();
+
+		FunkinSound.playMusic("freakyMenu", {
+        	overrideExisting: true,
+        	restartTrack: false
+       	});
+
+		displayedVariations = currentCharacter == "bf" ? [Constants.DEFAULT_VARIATION, "erect"] : [this.currentCharacter];
+
+		var index = 0;
+		var list = LevelRegistry.get_instance().listBaseGameLevelIds();
+		var modList = LevelRegistry.get_instance().listModdedLevelIds();
+
+		while (index < list.length) {
+			var levelId = list[index];
+			++index;
+
+			var levelIndex = 0;
+			var levelData = LevelRegistry.get_instance().parseEntryData(levelId).songs;
+
+			while (levelIndex < levelData.length) {
+				var songId = levelData[levelIndex];
+				++levelIndex;
+
+				var song = SongRegistry.get_instance().fetchEntry(songId);
+				var availableDifficultiesForSong = song.listDifficulties(null, this.displayedVariations, false);
+
+				if (availableDifficultiesForSong.length == 0) {
+					continue;
+				}
+
+				this.songs.push(new FreeplaySongData(levelId, songId, song, this.displayedVariations));
+				var songIndex = 0;
+
+				while (songIndex < availableDifficultiesForSong.length) {
+					var difficulty = availableDifficultiesForSong[songIndex];
+					++songIndex;
+
+					ArrayTools.pushUnique(this.diffIdsTotal, difficulty);
+				}
+			}
+		}
+
+		grpSongs = new FlxTypedGroup();
+       	this.add(grpSongs);
+
+		var songId = 0;
+		for (song in songs) {
+			var songName = new FlxText(8, 720/2 + (34 * songId), 0, song.songId);
+
+			songName.setFormat(Paths.font("vcr.ttf"), 32, 16777215, "center", FlxTextBorderStyle.OUTLINE, -16777215);
+			songName.screenCenter(1);
+
+			levelIds.push(song.levelId);
+			grpSongs.add(songName);
+			songId++;
+		}
+
+		diffText = new FlxText(8, 8, 0, "diff test");
+
+		diffText.setFormat(Paths.font("vcr.ttf"), 32, 16777215, "left", FlxTextBorderStyle.OUTLINE, -16777215);
+		diffText.screenCenter(16);
+
+		this.add(diffText);
+
+		changeSelection();
+		changeDiff();
+
+		trace(diffIdsTotal);
+	}
+
+	override function update(elapsed:Float) {
+		super.update(elapsed);
+
+		if (controls.BACK)
+		{
+			FlxG.sound.play(Paths.sound('cancelMenu'));
+			FlxG.switchState(new MainMenuState());
+		}
+
+		if (PlayerSettings.player1.controls._ui_left.checkJustPressed()) {
+			changeDiff(-1);
+		} else if (PlayerSettings.player1.controls._ui_right.checkJustPressed()) {
+			changeDiff(1);
+		}
+
+		if (PlayerSettings.player1.controls._ui_up.checkJustPressed()) {
+			changeSelection(-1);
+		} else if (PlayerSettings.player1.controls._ui_down.checkJustPressed()) {
+			changeSelection(1);
+		}
+
+		var accepted = PlayerSettings.player1.controls._accept.check();
+		if (accepted) {
+			var targetSong = SongRegistry.get_instance().fetchEntry(this.grpSongs.members[this.curSelected].text);
+			if (targetSong == null) {
+				trace("WARN: could not find song with id (" + this.grpSongs.members[this.curSelected].text + ")");
+				return;
+			}
+
+			var targetVariation = targetSong.getFirstValidVariation(currentDifficulty);
+
+			LoadingState.loadPlayState({
+				targetSong: targetSong,
+				targetDifficulty: currentDifficulty,
+				targetVariation: targetVariation,
+				practiceMode: false,
+				minimalMode: false,
+				botPlayMode: false
+			}, true);
+		}
+	}
+
+	function changeDiff(change) {
+		if (change == null) {
+			change = 0;
+		}
+
+		var arrayTarget = diffIdsTotal; // diffIdsCurrent
+
+		var currentDifficultyIndex = arrayTarget.indexOf(this.currentDifficulty);
+		if (currentDifficultyIndex == -1) {
+			currentDifficultyIndex = arrayTarget.indexOf(Constants.DEFAULT_DIFFICULTY);
+		}
+		currentDifficultyIndex += change;
+		if (currentDifficultyIndex < 0) {
+			currentDifficultyIndex = arrayTarget.length - 1;
+		}
+		if (currentDifficultyIndex >= arrayTarget.length) {
+			currentDifficultyIndex = 0;
+		}
+
+		currentDifficulty = arrayTarget[currentDifficultyIndex];
+		diffText.text = currentDifficulty;
+	}
+
+	function changeSelection(change) {
+		if (change == null) {
+			change = 0;
+		}
+
+		var prevSelected = this.curSelected;
+		this.curSelected += change;
+		if (this.curSelected < 0) {
+			this.curSelected = this.grpSongs.countLiving() - 1;
+		}
+		if (this.curSelected >= this.grpSongs.countLiving()) {
+			this.curSelected = 0;
+		}
+
+		var songId = 0;
+		this.grpSongs.forEach(function (songSprite) {
+			songSprite.color = 0xFFFFFF;
+			songSprite.y = 720/2 + (34 * songId) + (this.curSelected * -34);
+
+			songId++;
+		});
+
+		var daSongCapsule = this.grpSongs.members[this.curSelected];
+		daSongCapsule.color = 0xFF0000;
+
+		currentLevelId = this.levelIds[this.curSelected];
+	}
+}
