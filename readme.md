@@ -13,4 +13,6 @@ A Polymod addition for Friday Night Funkin', that introduces fixes and new featu
 - Different style for FPS counter
 
 ## How to install
-WIP
+- Download latest release
+- Unzip it in mods folder
+- Press F5 to reload mods!

@@ -57,6 +57,9 @@ class FunkinFixes extends Module {
 	var totalNotes:Float = 0;
 	var totalHitNotes:Float = 0;
 
+	var leftColor = 0;
+	var rightColor = 0;
+
 	var counters = [];
 	var counterNames = ["sickCounter","goodCounter","badCounter","shitCounter","missCounter"];
 	var counterTargets = ["sick","good","bad","shit","missed"];
@@ -106,9 +109,10 @@ class FunkinFixes extends Module {
 		customFreeplay: "Use temporary freeplay state (AMD fix)"
 	}
 	
-	function getDominantIconColour(char:String)
+	// Thanks GDD for this :)
+	function getDominantIconColour(char)
 	{
-		var iconBitmapData:BitmapData = BitmapData.fromFile('assets/images/icons/icon-' + char + '.png');
+		var iconBitmapData:BitmapData = char.graphic.bitmap;
 		var colourDict = {};
 
 		if (iconBitmapData == null) {
@@ -167,6 +171,7 @@ class FunkinFixes extends Module {
 		save = new FlxSave();
         save.bind("FunkinFixes", "Fireable");
 
+		// Thanks Furo for Reflect LOL
 		for (key in Reflect.fields(settingsData)) {
 			var value = Reflect.field(settingsData, key);
 
@@ -253,8 +258,11 @@ class FunkinFixes extends Module {
 			}
 		}
 
+		leftColor = getDominantIconColour(state.iconP2);
+		rightColor = getDominantIconColour(state.iconP1);
+
 		if (settingsData.healthbarColors == true) {
-			state.healthBar.createFilledBar(getDominantIconColour(state.iconP2.characterId), getDominantIconColour(state.iconP1.characterId));
+			state.healthBar.createFilledBar(leftColor, rightColor);
 		}
 
 		// Add judgement counter
@@ -327,6 +335,10 @@ class FunkinFixes extends Module {
 				specL.cameras = [state.camHUD];
 
 				specL.x -= 50;
+				for (i in specL.group.members) {
+					i.color = leftColor;
+				}
+
 				state.add(specL);
 			}
 
@@ -335,13 +347,16 @@ class FunkinFixes extends Module {
 				specR.cameras = [state.camHUD];
 
 				specR.x = FlxG.width - 150;
+				for (i in specR.group.members) {
+					i.color = rightColor;
+				}
+
 				state.add(specR);
 			}
 		}
 
 		if (FORCED_SCROLLSPEED != 0) {
 			state.get_currentChart().scrollSpeed = FORCED_SCROLLSPEED;
-			trace(state.get_currentChart().scrollSpeed);
 		}
 
 		Constants.GHOST_TAPPING = settingsData.ghostTapping;
@@ -518,6 +533,7 @@ class FunkinFixes extends Module {
 
 	function cleanUp() 
 	{
+		trace("clear");
 		if (scoreText != null) {
 			scoreText.destroy();
 			scoreText = null;
@@ -573,6 +589,43 @@ class FunkinFixes extends Module {
 
 		ratingStatus = "PFC";
 		updateScoreText();
+
+		if (specL != null) {
+			specL.destroy();
+			specL = null;
+		}
+
+		if (specR != null) {
+			specR.destroy();
+			specR = null;
+		}
+
+		var state = PlayState.instance;
+		if (state.vocals != null && settingsData.spectogramVisuals == true) {
+			if (state.vocals.getOpponentVoice() != null) {
+				specL = new SpectogramSprite(state.vocals.getOpponentVoice(),null,null,750);
+				specL.cameras = [state.camHUD];
+
+				specL.x -= 50;
+				for (i in specL.group.members) {
+					i.color = leftColor;
+				}
+
+				state.add(specL);
+			}
+
+			if (state.vocals.getPlayerVoice() != null) {
+				specR = new SpectogramSprite(state.vocals.getPlayerVoice(),null,null,750);
+				specR.cameras = [state.camHUD];
+
+				specR.x = FlxG.width - 150;
+				for (i in specR.group.members) {
+					i.color = rightColor;
+				}
+
+				state.add(specR);
+			}
+		}
 	}
 
 	override function onDestroy(event){
